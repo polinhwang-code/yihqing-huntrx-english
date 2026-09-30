@@ -153,12 +153,18 @@ function openRole(role){
 }
 
 function speak(text){
-  if(!("speechSynthesis" in window)) return;
+  if(!("speechSynthesis" in window)) {
+    setTimeout(startListening, 300);
+    return;
+  }
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "en-US";
   u.rate = 0.82;
   u.pitch = 1.05;
+  u.onend = () => {
+    if(active) setTimeout(startListening, 350);
+  };
   speechSynthesis.speak(u);
 }
 
@@ -199,31 +205,63 @@ document.getElementById("gameBtn").onclick = () => {
 document.getElementById("homeBtn").onclick = () => {
   speechSynthesis.cancel();
   active = false;
+  try { if(rec && isListening) rec.stop(); } catch(e) {}
   document.getElementById("play").classList.remove("active");
   document.getElementById("home").style.display = "block";
 };
+
+let isListening = false;
+
+function startListening(){
+  if(!active || !rec || isListening) return;
+  try {
+    rec.start();
+  } catch(e) {}
+}
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null;
 if(SpeechRecognition){
   rec = new SpeechRecognition();
-  rec.lang = "en-US";
+  rec.lang = "zh-TW";
   rec.interimResults = false;
   rec.maxAlternatives = 1;
-  rec.onstart = () => document.getElementById("status").textContent = "我在聽…";
-  rec.onerror = () => document.getElementById("status").textContent = "Again, please?";
+  rec.continuous = false;
+
+  rec.onstart = () => {
+    isListening = true;
+    document.getElementById("status").textContent = "我在聽… 中文英文都可以";
+  };
+
+  rec.onerror = e => {
+    isListening = false;
+    if(!active) return;
+    if(e.error === "no-speech"){
+      document.getElementById("status").textContent = "我還在聽…";
+      setTimeout(startListening, 600);
+    } else {
+      document.getElementById("status").textContent = "可以再說一次嗎？";
+      setTimeout(startListening, 800);
+    }
+  };
+
   rec.onresult = e => {
+    isListening = false;
     const heard = e.results[0][0].transcript;
     document.getElementById("status").textContent = "聽到：" + heard;
-    setTimeout(nextPrompt, 500);
+    // 不判斷中文或英文是否正確；只要收到語音，就算完成回答
+    setTimeout(nextPrompt, 450);
   };
-  rec.onend = () => {};
+
+  rec.onend = () => {
+    isListening = false;
+  };
 }
 
 document.getElementById("micBtn").onclick = () => {
   if(!active) return;
   if(rec){
-    try { rec.start(); } catch(e){}
+    startListening();
   } else {
     document.getElementById("status").textContent = "此瀏覽器不支援語音辨識，可直接按「下一句」。";
   }
