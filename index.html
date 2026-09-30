@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#151527">
+  <title>苡晴 × HUNTR/X 英語冒險</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:linear-gradient(180deg,#17162a,#23233c 60%,#17162a); color:white; }
+    .wrap { max-width:760px; margin:auto; padding:18px 16px 36px; }
+    h1 { font-size:28px; margin:10px 0 4px; text-align:center; }
+    .sub { text-align:center; opacity:.78; margin-bottom:18px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:14px; }
+    .card { border:0; border-radius:24px; overflow:hidden; background:#2b2b47; box-shadow:0 10px 30px #0005; position:relative; }
+    .card img { width:100%; aspect-ratio: 4 / 3; object-fit:cover; display:block; background:linear-gradient(135deg,#44446b,#24243e); }
+    .card .fallback { position:absolute; inset:0 0 86px 0; display:grid; place-items:center; font-size:58px; font-weight:800; letter-spacing:3px; opacity:.9; pointer-events:none; }
+    .meta { padding:14px 16px 16px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .name { font-size:24px; font-weight:800; }
+    .desc { opacity:.75; font-size:14px; margin-top:3px; }
+    button { -webkit-tap-highlight-color:transparent; }
+    .choose { border:0; border-radius:16px; padding:12px 16px; font-size:17px; font-weight:700; background:white; color:#17162a; }
+    .panel { display:none; margin-top:16px; background:#24243b; border-radius:24px; padding:18px; text-align:center; }
+    .panel.active { display:block; }
+    .avatar { width:100%; max-height:46vh; object-fit:cover; border-radius:20px; background:#33334f; }
+    .role { font-size:30px; font-weight:900; margin:12px 0 4px; }
+    .prompt { min-height:78px; display:grid; place-items:center; font-size:36px; font-weight:900; margin:8px 0; padding:8px; }
+    .hint { min-height:28px; opacity:.8; }
+    .controls { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+    .big { border:0; border-radius:18px; padding:16px; font-size:20px; font-weight:800; }
+    .start { background:#fff; color:#17162a; grid-column:1/-1; }
+    .mic { background:#8b7cff; color:#fff; }
+    .next { background:#3d3d61; color:#fff; }
+    .smallrow { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:12px; }
+    .small { background:#38385a; color:white; border:0; border-radius:14px; padding:10px 12px; font-size:15px; }
+    .status { margin-top:12px; font-size:14px; opacity:.72; min-height:20px; }
+    .footer { text-align:center; margin-top:18px; font-size:13px; opacity:.65; }
+    input[type=file] { display:none; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <section id="home">
+    <h1>HUNTR/X ENGLISH</h1>
+    <div class="sub">苡晴，今天找誰？</div>
+    <div class="grid" id="cards"></div>
+    <div class="footer">請由成人陪同使用 ♡</div>
+  </section>
+
+  <section id="play" class="panel">
+    <img id="playImg" class="avatar" alt="">
+    <div class="role" id="playRole"></div>
+    <div class="prompt" id="prompt">Ready?</div>
+    <div class="hint" id="hint"></div>
+    <div class="controls">
+      <button class="big start" id="startBtn">開始</button>
+      <button class="big mic" id="micBtn">🎤 說話</button>
+      <button class="big next" id="nextBtn">下一句</button>
+    </div>
+    <div class="smallrow">
+      <button class="small" id="easierBtn">再簡單一點</button>
+      <button class="small" id="gameBtn">換個遊戲</button>
+      <button class="small" id="homeBtn">回角色</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+</div>
+
+<script>
+const roles = {
+  RUMI: {
+    desc: "溫柔日常",
+    emoji: "R",
+    prompts: ["Hello!","How are you?","Happy or tired?","Good morning!","I am happy."],
+    easy: ["Hello!","Happy?","Morning!"]
+  },
+  MIRA: {
+    desc: "活力動作",
+    emoji: "M",
+    prompts: ["Hands up!","Hands down!","Turn around!","Clap hands!","Jump!","Nod your head!","Shake your head!"],
+    easy: ["Jump!","Clap!","Turn!","Hands up!"]
+  },
+  ZOEY: {
+    desc: "顏色動物",
+    emoji: "Z",
+    prompts: ["Pink or blue?","Cat or dog?","Find something red!","Show me green!","Apple or banana?","Big or small?"],
+    easy: ["Pink?","Blue?","Cat?","Dog?"]
+  }
+};
+
+let currentRole = "MIRA";
+let easier = false;
+let lastIndex = -1;
+let active = false;
+
+function photoKey(role){ return "photo_"+role; }
+function getPhoto(role){ return localStorage.getItem(photoKey(role)) || ""; }
+
+function renderCards(){
+  const cards = document.getElementById("cards");
+  cards.innerHTML = "";
+  Object.entries(roles).forEach(([role,data]) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const saved = getPhoto(role);
+    card.innerHTML = `
+      <div style="position:relative">
+        <img id="img_${role}" src="${saved}" alt="${role} 角色圖片" ${saved ? "" : 'style="visibility:hidden"'}>
+        <div class="fallback" id="fb_${role}" ${saved ? 'style="display:none"' : ""}>${role}</div>
+      </div>
+      <div class="meta">
+        <div>
+          <div class="name">${role}</div>
+          <div class="desc">${data.desc}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="choose" onclick="openRole('${role}')">選她</button>
+          <button class="small" onclick="document.getElementById('file_${role}').click()">設定照片</button>
+          <input id="file_${role}" type="file" accept="image/*" onchange="savePhoto('${role}',this)">
+        </div>
+      </div>`;
+    cards.appendChild(card);
+  });
+}
+
+function savePhoto(role,input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    localStorage.setItem(photoKey(role), e.target.result);
+    renderCards();
+  };
+  r.readAsDataURL(file);
+}
+
+function openRole(role){
+  currentRole = role;
+  active = false;
+  easier = false;
+  document.getElementById("home").style.display = "none";
+  document.getElementById("play").classList.add("active");
+  document.getElementById("playRole").textContent = role;
+  const photo = getPhoto(role);
+  const img = document.getElementById("playImg");
+  if(photo){ img.src = photo; img.style.display = "block"; }
+  else { img.removeAttribute("src"); img.style.display = "none"; }
+  document.getElementById("prompt").textContent = "Ready?";
+  document.getElementById("hint").textContent = "成人說「開始」後再開始。";
+  document.getElementById("status").textContent = "";
+}
+
+function speak(text){
+  if(!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = 0.82;
+  u.pitch = 1.05;
+  speechSynthesis.speak(u);
+}
+
+function nextPrompt(){
+  if(!active) return;
+  const arr = easier ? roles[currentRole].easy : roles[currentRole].prompts;
+  let i;
+  do { i = Math.floor(Math.random()*arr.length); } while(arr.length>1 && i===lastIndex);
+  lastIndex = i;
+  const p = arr[i];
+  document.getElementById("prompt").textContent = p;
+  document.getElementById("hint").textContent = "";
+  speak(p);
+}
+
+document.getElementById("startBtn").onclick = () => {
+  active = true;
+  const hello = "Hi, Yiqing!";
+  document.getElementById("prompt").textContent = hello;
+  document.getElementById("hint").textContent = "";
+  speak(hello);
+};
+
+document.getElementById("nextBtn").onclick = nextPrompt;
+
+document.getElementById("easierBtn").onclick = () => {
+  easier = true;
+  document.getElementById("status").textContent = "已切到更簡單模式。";
+  nextPrompt();
+};
+
+document.getElementById("gameBtn").onclick = () => {
+  easier = false;
+  document.getElementById("status").textContent = "換一個玩法。";
+  nextPrompt();
+};
+
+document.getElementById("homeBtn").onclick = () => {
+  speechSynthesis.cancel();
+  active = false;
+  document.getElementById("play").classList.remove("active");
+  document.getElementById("home").style.display = "block";
+};
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if(SpeechRecognition){
+  rec = new SpeechRecognition();
+  rec.lang = "en-US";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  rec.onstart = () => document.getElementById("status").textContent = "我在聽…";
+  rec.onerror = () => document.getElementById("status").textContent = "Again, please?";
+  rec.onresult = e => {
+    const heard = e.results[0][0].transcript;
+    document.getElementById("status").textContent = "聽到：" + heard;
+    setTimeout(nextPrompt, 500);
+  };
+  rec.onend = () => {};
+}
+
+document.getElementById("micBtn").onclick = () => {
+  if(!active) return;
+  if(rec){
+    try { rec.start(); } catch(e){}
+  } else {
+    document.getElementById("status").textContent = "此瀏覽器不支援語音辨識，可直接按「下一句」。";
+  }
+};
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+}
+
+renderCards();
+</script>
+</body>
+</html>
